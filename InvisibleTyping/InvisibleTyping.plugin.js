@@ -11,11 +11,8 @@
 
 'use strict';
 
-/* react */
-const React = BdApi.React;
-
 /* @manifest */
-var manifest = {
+const manifest = {
     "name": "InvisibleTyping",
     "version": "1.4.6",
     "author": "Strencher",
@@ -39,14 +36,8 @@ const {
     ContextMenu,
     Data,
     DOM,
-    Logger,
-    Net,
     Patcher,
-    Plugins,
-    ReactUtils,
-    Themes,
     UI,
-    Utils,
     Webpack
 } = new BdApi(manifest.name);
 
@@ -62,6 +53,9 @@ var Styles = {
         DOM.removeStyle();
     }
 };
+
+/* react */
+var React = BdApi.React;
 
 /* ../common/Changelog/style.scss */
 Styles.sheets.push("/* ../common/Changelog/style.scss */", `.Changelog-Title-Wrapper {
@@ -87,6 +81,7 @@ Styles.sheets.push("/* ../common/Changelog/style.scss */", `.Changelog-Title-Wra
 
 .Changelog-Item {
   color: #c4c9ce;
+  margin-bottom: 16px;
 }
 .Changelog-Item .Changelog-Header {
   display: flex;
@@ -126,6 +121,7 @@ Styles.sheets.push("/* ../common/Changelog/style.scss */", `.Changelog-Title-Wra
 /* ../common/Changelog/index.tsx */
 function showChangelog(manifest) {
     if (Data.load("lastVersion") === manifest.version) return;
+    if (!manifest.changelog.length) return;
     const i18n = Webpack.getByKeys("getLocale");
     const formatter = new Intl.DateTimeFormat(i18n.getLocale(), {
         month: "long",
@@ -148,6 +144,98 @@ function showChangelog(manifest) {
     );
     UI.alert(title, items);
     Data.save("lastVersion", manifest.version);
+}
+
+/* modules/shared.js */
+const Dispatcher = Webpack.getByKeys("dispatch", "register", {
+    searchExports: true
+});
+const Flux = Webpack.getByKeys("Store");
+const TypingModule = Webpack.getByKeys("startTyping");
+const useStateFromStores = Webpack.getByStrings("useStateFromStores", {
+    searchExports: true
+});
+const buildClassName = (...args) => {
+    return args.reduce((classNames, arg) => {
+        if (!arg) return classNames;
+        if (typeof arg === "string" || typeof arg === "number") {
+            classNames.push(arg);
+        } else if (Array.isArray(arg)) {
+            const nestedClassNames = buildClassName(...arg);
+            if (nestedClassNames) classNames.push(nestedClassNames);
+        } else if (typeof arg === "object") {
+            Object.keys(arg).forEach((key) => {
+                if (arg[key]) classNames.push(key);
+            });
+        }
+        return classNames;
+    }, []).join(" ");
+};
+
+/* modules/settings.js */
+const Settings = new class Settings2 extends Flux.Store {
+    constructor() {
+        super(Dispatcher, {});
+    }
+    _settings = Data.load("settings") ?? {};
+    get(key, def) {
+        return this._settings[key] ?? def;
+    }
+    set(key, value) {
+        this._settings[key] = value;
+        Data.save("settings", this._settings);
+        this.emitChange();
+    }
+}();
+
+/* components/settings.json */
+var SettingsItems = [{
+    type: "switch",
+    name: "Automatically enable",
+    note: "Automatically enables the typing indicator for each channel that isn't manually disabled",
+    id: "autoEnable",
+    value: true
+}];
+
+/* components/settings.jsx */
+const {
+    SettingItem,
+    SwitchInput
+} = Components;
+
+function SwitchItem(props) {
+    const value = useStateFromStores([Settings], () => Settings.get(props.id, props.value));
+    return React.createElement(
+        SettingItem, {
+            ...props,
+            inline: true
+        },
+        React.createElement(
+            SwitchInput, {
+                value,
+                onChange: (v) => {
+                    Settings.set(props.id, v);
+                }
+            }
+        )
+    );
+}
+
+function renderItems(items) {
+    return items.map((item) => {
+        switch (item.type) {
+            case "switch":
+                return React.createElement(SwitchItem, {
+                    ...item
+                });
+            default:
+                return null;
+        }
+    });
+}
+
+function SettingsPanel() {
+    return React.createElement("div", null, renderItems(SettingsItems));
 }
 
 /* components/typingButton.scss */
@@ -198,48 +286,6 @@ function Keyboard({
         fill: "#f04747"
     }) : null);
 }
-
-/* modules/shared.js */
-const Dispatcher = Webpack.getByKeys("dispatch", "register", {
-    searchExports: true
-});
-const Flux = Webpack.getByKeys("Store");
-const TypingModule = Webpack.getByKeys("startTyping");
-const useStateFromStores = Webpack.getByStrings("useStateFromStores", {
-    searchExports: true
-});
-const buildClassName = (...args) => {
-    return args.reduce((classNames, arg) => {
-        if (!arg) return classNames;
-        if (typeof arg === "string" || typeof arg === "number") {
-            classNames.push(arg);
-        } else if (Array.isArray(arg)) {
-            const nestedClassNames = buildClassName(...arg);
-            if (nestedClassNames) classNames.push(nestedClassNames);
-        } else if (typeof arg === "object") {
-            Object.keys(arg).forEach((key) => {
-                if (arg[key]) classNames.push(key);
-            });
-        }
-        return classNames;
-    }, []).join(" ");
-};
-
-/* modules/settings.js */
-const Settings = new class Settings2 extends Flux.Store {
-    constructor() {
-        super(Dispatcher, {});
-    }
-    _settings = Data.load("settings") ?? {};
-    get(key, def) {
-        return this._settings[key] ?? def;
-    }
-    set(key, value) {
-        this._settings[key] = value;
-        Data.save("settings", this._settings);
-        this.emitChange();
-    }
-}();
 
 /* components/typingButton.tsx */
 const ChatButton = Webpack.getBySource("CHAT_INPUT_BUTTON_NOTIFICATION")?.A;
@@ -338,56 +384,6 @@ InvisibleTypingButton.getState = function(channelId) {
     return isGlobal;
 };
 
-/* components/settings.json */
-var SettingsItems = [{
-    type: "switch",
-    name: "Automatically enable",
-    note: "Automatically enables the typing indicator for each channel that isn't manually disabled",
-    id: "autoEnable",
-    value: true
-}];
-
-/* components/settings.jsx */
-const {
-    SettingItem,
-    SwitchInput
-} = Components;
-
-function SwitchItem(props) {
-    const value = useStateFromStores([Settings], () => Settings.get(props.id, props.value));
-    return React.createElement(
-        SettingItem, {
-            ...props,
-            inline: true
-        },
-        React.createElement(
-            SwitchInput, {
-                value,
-                onChange: (v) => {
-                    Settings.set(props.id, v);
-                }
-            }
-        )
-    );
-}
-
-function renderItems(items) {
-    return items.map((item) => {
-        switch (item.type) {
-            case "switch":
-                return React.createElement(SwitchItem, {
-                    ...item
-                });
-            default:
-                return null;
-        }
-    });
-}
-
-function SettingsPanel() {
-    return React.createElement("div", null, renderItems(SettingsItems));
-}
-
 /* index.tsx */
 class InvisibleTyping {
     start() {
@@ -429,7 +425,7 @@ class InvisibleTyping {
             if (args.length == 2 && !args[0].disabled && args[0].type.analyticsName == "normal" && res.props.children && Array.isArray(res.props.children)) {
                 res.props.children.unshift(React.createElement(InvisibleTypingButton, {
                     channel: args[0].channel,
-                    isEmpty: !Boolean(args[0].textValue)
+                    isEmpty: !args[0].textValue
                 }));
             }
         });
