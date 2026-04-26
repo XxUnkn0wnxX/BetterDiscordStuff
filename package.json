@@ -16,6 +16,7 @@
     "@typescript-eslint/parser": "^8.59.0",
     "@vencord/discord-types": "^1.0.1",
     "cssom": "^0.5.0",
+    "esbuild": "0.26.0",
     "eslint": "^9.39.4",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-simple-import-sort": "^12.1.1",

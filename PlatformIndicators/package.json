@@ -1,6 +1,6 @@
 {
   "name": "APlatformIndicators",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "author": "Strencher",
   "authorId": "415849376598982656",
   "description": "Adds indicators for every platform that the user is using.",
@@ -11,17 +11,10 @@
       "title": "Fixed",
       "type": "fixed",
       "items": [
-        "Fixed for the latest Discord update"
-      ]
-    },
-    {
-      "title": "New Indicator",
-      "type": "added",
-      "items": [
-        "Added support for VR"
+        "Prevent startup errors when the DM list or friend list modules load later during Discord launch"
       ]
     }
   ],
-  "changelogDate": "2026-02-23"
+  "changelogDate": "2026-04-26"
 }
 

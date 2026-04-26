@@ -19,3 +19,11 @@
 .invisibleTypingTooltip {
     display: inline-flex;
 }
+
+.invisibleTypingButton .invisibleTypingKeyboardPath {
+    fill: oklch(0.6 0 0);
+}
+
+.invisibleTypingButton:hover:not(.disabled) .invisibleTypingKeyboardPath {
+    fill: oklch(0.75 0 0);
+}

@@ -15,6 +15,10 @@ export default class PlatformIndicators {
     }
 
     start() {
+        this.dmListPatched = false;
+        this.dmListRetryTimer = null;
+        this.friendListPatched = false;
+        this.friendListRetryTimer = null;
         Styles.load();
         showChangelog(manifest);
         this.patchDMList();
@@ -24,14 +28,33 @@ export default class PlatformIndicators {
         this.patchFriendList();
     }
 
+    queueDMListPatchRetry() {
+        if (this.dmListPatched || this.dmListRetryTimer) return;
+
+        this.dmListRetryTimer = setTimeout(() => {
+            this.dmListRetryTimer = null;
+            this.patchDMList();
+        }, 1500);
+    }
+
     patchDMList() {
         const UserContext = React.createContext(null);
         const ChannelWrapper = Webpack.getBySource("activities", "isMultiUserDM", "isMobile");
-        const NameWrapper = Webpack.getBySource("AvatarWithText").A;
+        const NameWrapper = Webpack.getBySource("AvatarWithText")?.A;
         const ChannelClasses = Webpack.getByKeys("channel", "decorator");
+        const channelWrapperKey = typeof ChannelWrapper?.Ay === "function" ? "Ay" : null;
 
-        Patcher.after(ChannelWrapper, "Ay", (_, __, res) => {
+        if (!channelWrapperKey || typeof NameWrapper?.render !== "function") {
+            this.queueDMListPatchRetry();
+            return;
+        }
+
+        this.dmListPatched = true;
+
+        Patcher.after(ChannelWrapper, channelWrapperKey, (_, __, res) => {
             if (!Settings.get("showInDmsList", true)) return;
+            if (!res || typeof res.type !== "function") return;
+
             Patcher.after(res, "type", (_, [props], res) => {
                 if (!props.user) return; // Its a group DM
                 if (Settings.get("ignoreBots", true) && props.user.bot) return;
@@ -44,7 +67,7 @@ export default class PlatformIndicators {
             });
         });
 
-        const ChannelWrapperElement = document.querySelector(`h2 + .${ChannelClasses.channel}`);
+        const ChannelWrapperElement = ChannelClasses?.channel ? document.querySelector(`h2 + .${ChannelClasses.channel}`) : null;
         if (ChannelWrapperElement) {
             const ChannelWrapperInstance = ReactUtils.getOwnerInstance(ChannelWrapperElement);
             if (ChannelWrapperInstance) ChannelWrapperInstance.forceUpdate();
@@ -126,11 +149,26 @@ export default class PlatformIndicators {
         });
     }
 
+    queueFriendListPatchRetry() {
+        if (this.friendListPatched || this.friendListRetryTimer) return;
+
+        this.friendListRetryTimer = setTimeout(() => {
+            this.friendListRetryTimer = null;
+            this.patchFriendList();
+        }, 1500);
+    }
+
     patchFriendList() {
-        const UserInfo = Webpack.getBySource("user", "subText", "showAccountIdentifier").A;
+        if (!Settings.get("showInFriendsList", true)) return;
+        const UserInfo = Webpack.getBySource("user", "subText", "showAccountIdentifier")?.A;
         const FriendListClasses = Webpack.getByKeys("userInfo", "hovered");
 
-        if (!Settings.get("showInFriendsList", true)) return;
+        if (typeof UserInfo !== "function" || !FriendListClasses?.discriminator || !FriendListClasses?.hovered) {
+            this.queueFriendListPatchRetry();
+            return;
+        }
+
+        this.friendListPatched = true;
 
         DOM.addStyle("PlatformIndicators", `
             .${FriendListClasses.discriminator} { display: none; }
@@ -139,7 +177,9 @@ export default class PlatformIndicators {
 
         const unpatch = Patcher.after(UserInfo.prototype, "render", (_, __, res) => {
             unpatch();
+            if (!res?.type?.prototype) return;
             Patcher.after(res.type.prototype, "render", (_, __, res) => {
+                if (!res || typeof res.type !== "function") return;
                 const unpatch2 = Patcher.after(res, "type", (_, __, res) => {
                     unpatch2();
                     const child = Utils.findInTree(res, e => e?.className?.includes("listItemContents"), { walkable: ["children", "props"] });
@@ -148,8 +188,10 @@ export default class PlatformIndicators {
                     const userId = findInReactTree(res, e => e?.user, { walkable: ["props", "children"] })?.user?.id;
                     if (!userId) return;
 
+                    if (!child.children?.[0] || typeof child.children[0].type !== "function") return;
                     const unpatch3 = Patcher.after(child.children[0], "type", (_, __, res) => {
                         unpatch3();
+                        if (!res?.props?.children) return;
                         res.props.children.push(
                             <StatusIndicators
                                 userId={userId}
@@ -163,6 +205,8 @@ export default class PlatformIndicators {
     }
 
     stop() {
+        clearTimeout(this.dmListRetryTimer);
+        clearTimeout(this.friendListRetryTimer);
         Patcher.unpatchAll();
         DOM.removeStyle("PlatformIndicators");
         Styles.unload();

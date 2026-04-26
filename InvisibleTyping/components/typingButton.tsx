@@ -1,12 +1,10 @@
-import { Components, ContextMenu, UI, Webpack } from "@api";
+import { Components, ContextMenu, UI } from "@api";
 import React from "react";
 
 import Settings from "../modules/settings";
 import { buildClassName, TypingModule, useStateFromStores } from "../modules/shared";
 import Keyboard from "./icons/keyboard";
 import styles from "./typingButton.scss";
-
-const ChatButton = Webpack.getBySource("CHAT_INPUT_BUTTON_NOTIFICATION")?.A;
 
 const removeItem = function(array: any[], item: any) {
     while (array.includes(item)) {
@@ -75,17 +73,19 @@ export default function InvisibleTypingButton({ channel, isEmpty }) {
                     {...props}
                     onClick={handleClick}
                     onContextMenu={handleContextMenu}
-                    style={{ padding: "5px" }}
+                    className={
+                        buildClassName(
+                            styles.invisibleTypingButton,
+                            { enabled, disabled: !enabled }
+                        )
+                    }
+                    style={{
+                        padding: "5px",
+                        display: "flex",
+                        alignItems: "center"
+                    }}
                 >
-                    <ChatButton
-                        className={
-                            buildClassName(
-                                styles.invisibleTypingButton,
-                                { enabled, disabled: !enabled }
-                            )
-                        }>
-                        <Keyboard disabled={!enabled} />
-                    </ChatButton>
+                    <Keyboard disabled={!enabled} />
                 </div>
 
             )}
