@@ -1,10 +1,13 @@
-import { Components, ContextMenu, UI } from "@api";
+import { Components, ContextMenu, Hooks, UI, Webpack } from "@api";
+import { Settings } from "@common/Settings";
+import { Channel } from "@vencord/discord-types";
 import React from "react";
 
-import Settings from "../modules/settings";
-import { buildClassName, TypingModule, useStateFromStores } from "../modules/shared";
+import { buildClassName, TypingModule } from "../modules/shared";
 import Keyboard from "./icons/keyboard";
 import styles from "./typingButton.scss";
+
+const ChatButton: React.ComponentType<any> = (Webpack.getBySource("CHAT_INPUT_BUTTON_NOTIFICATION", "animated.div") as any)?.A;
 
 const removeItem = function(array: any[], item: any) {
     while (array.includes(item)) {
@@ -15,13 +18,10 @@ const removeItem = function(array: any[], item: any) {
 };
 
 function InvisibleTypingContextMenu() {
-    const enabled = useStateFromStores([Settings], () => Settings.get("autoEnable", true));
+    const enabled = Hooks.useStateFromStores([Settings], () => Settings.get("autoEnable", true));
 
     return (
-        <ContextMenu.Menu
-            navId="invisible-typing-context-menu"
-            onClose={ContextMenu.close}
-        >
+        <ContextMenu.Menu navId="invisible-typing-context-menu" onClose={ContextMenu.close}>
             <ContextMenu.Item
                 id="globally-disable-or-enable-typing"
                 label={enabled ? "Disable Globally" : "Enable Globally"}
@@ -43,11 +43,11 @@ function InvisibleTypingContextMenu() {
     );
 }
 
-export default function InvisibleTypingButton({ channel, isEmpty }) {
-    const enabled = useStateFromStores([Settings], InvisibleTypingButton.getState.bind(this, channel.id));
+export default function InvisibleTypingButton(this: any, { channel, isEmpty }: { channel: Channel; isEmpty: boolean }) {
+    const enabled = Hooks.useStateFromStores([Settings], InvisibleTypingButton.getState.bind(this, channel.id));
 
     const handleClick = React.useCallback(() => {
-        const excludeList = [...Settings.get<string[]>("exclude", [])];
+        const excludeList: string[] = [...Settings.get("exclude", [])];
 
         if (excludeList.includes(channel.id)) {
             removeItem(excludeList, channel.id);
@@ -60,41 +60,32 @@ export default function InvisibleTypingButton({ channel, isEmpty }) {
         Settings.set("exclude", excludeList);
     }, [enabled]);
 
-    const handleContextMenu = React.useCallback(event => {
-        ContextMenu.open(event, () => {
-            return <InvisibleTypingContextMenu />;
-        });
-    }, [enabled]);
+    const handleContextMenu = React.useCallback(
+        (event: React.MouseEvent<Element, MouseEvent>) => {
+            ContextMenu.open(event, () => {
+                return <InvisibleTypingContextMenu />;
+            });
+        },
+        [enabled],
+    );
 
     return (
         <Components.Tooltip text={enabled ? "Typing Enabled" : "Typing Disabled"}>
-            {props => (
-                <div
-                    {...props}
-                    onClick={handleClick}
-                    onContextMenu={handleContextMenu}
-                    className={
-                        buildClassName(
-                            styles.invisibleTypingButton,
-                            { enabled, disabled: !enabled }
-                        )
-                    }
-                    style={{
-                        padding: "5px",
-                        display: "flex",
-                        alignItems: "center"
-                    }}
-                >
-                    <Keyboard disabled={!enabled} />
+            {(props: React.JSX.IntrinsicAttributes & React.ClassAttributes<HTMLDivElement> & React.HTMLAttributes<HTMLDivElement>) => (
+                <div {...props} onClick={handleClick} onContextMenu={handleContextMenu}>
+                    <ChatButton
+                        className={buildClassName(styles.invisibleTypingButton, { enabled, disabled: !enabled })}
+                    >
+                        <Keyboard disabled={!enabled} />
+                    </ChatButton>
                 </div>
-
             )}
         </Components.Tooltip>
     );
 }
 
 InvisibleTypingButton.getState = function(channelId: string) {
-    const isGlobal = Settings.get<boolean>("autoEnable", true);
+    const isGlobal: boolean = Settings.get("autoEnable", true);
     const isExcluded = Settings.get("exclude", []).includes(channelId);
 
     if (isGlobal && isExcluded) return false;

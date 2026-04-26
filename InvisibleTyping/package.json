@@ -1,6 +1,7 @@
 {
+	"$schema": "../common/Schemas/manifest.schema.json",
 	"name": "InvisibleTyping",
-	"version": "1.4.6.1",
+	"version": "1.4.7",
 	"author": "Strencher",
 	"authorId": "415849376598982656",
 	"description": "Enhanced version of silent typing.",
