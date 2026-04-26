@@ -1,6 +1,7 @@
 {
+	"$schema": "../common/Schemas/manifest.schema.json",
 	"name": "InvisibleTyping",
-	"version": "1.4.6",
+	"version": "1.4.7",
 	"author": "Strencher",
 	"authorId": "415849376598982656",
 	"description": "Enhanced version of silent typing.",
@@ -15,5 +16,5 @@
 			]
 		}
 	],
-	"changelogDate": "2026-03-20"
+	"changelogDate": "2026-04-26"
 }
