@@ -1,58 +1,45 @@
 /**
+ * @$schema ../common/Schemas/manifest.schema.json
  * @name APlatformIndicators
- * @version 1.6.1
+ * @version 1.6.2
  * @author Strencher
  * @authorId 415849376598982656
  * @description Adds indicators for every platform that the user is using.
  * @source https://github.com/Strencher/BetterDiscordStuff/blob/master/PlatformIndicators/APlatformIndicators.plugin.js
  * @invite gvA2ree
- * @changelogDate 2026-02-23
+ * @changelogDate 2026-04-27
  */
 
 'use strict';
 
-/* react */
-const React = BdApi.React;
-
 /* @manifest */
-var manifest = {
+const manifest = {
+    "$schema": "../common/Schemas/manifest.schema.json",
     "name": "APlatformIndicators",
-    "version": "1.6.1",
+    "version": "1.6.2",
     "author": "Strencher",
     "authorId": "415849376598982656",
     "description": "Adds indicators for every platform that the user is using.",
     "source": "https://github.com/Strencher/BetterDiscordStuff/blob/master/PlatformIndicators/APlatformIndicators.plugin.js",
     "invite": "gvA2ree",
     "changelog": [{
-            "title": "Fixed",
-            "type": "fixed",
-            "items": [
-                "Fixed for the latest Discord update"
-            ]
-        },
-        {
-            "title": "New Indicator",
-            "type": "added",
-            "items": [
-                "Added support for VR"
-            ]
-        }
-    ],
-    "changelogDate": "2026-02-23"
+        "title": "Fixed",
+        "type": "fixed",
+        "items": [
+            "Fixed for the latest Discord update"
+        ]
+    }],
+    "changelogDate": "2026-04-27"
 };
 
 /* @api */
 const {
     Components,
-    ContextMenu,
     Data,
     DOM,
-    Logger,
-    Net,
+    Hooks,
     Patcher,
-    Plugins,
     ReactUtils,
-    Themes,
     UI,
     Utils,
     Webpack
@@ -95,6 +82,7 @@ Styles$2.sheets.push("/* ../common/Changelog/style.scss */", `.Changelog-Title-W
 
 .Changelog-Item {
   color: #c4c9ce;
+  margin-bottom: 16px;
 }
 .Changelog-Item .Changelog-Header {
   display: flex;
@@ -131,9 +119,13 @@ Styles$2.sheets.push("/* ../common/Changelog/style.scss */", `.Changelog-Title-W
   color: var(--background-accent);
 }`);
 
+/* react */
+var React = BdApi.React;
+
 /* ../common/Changelog/index.tsx */
 function showChangelog(manifest) {
     if (Data.load("lastVersion") === manifest.version) return;
+    if (!manifest.changelog.length) return;
     const i18n = Webpack.getByKeys("getLocale");
     const formatter = new Intl.DateTimeFormat(i18n.getLocale(), {
         month: "long",
@@ -158,10 +150,128 @@ function showChangelog(manifest) {
     Data.save("lastVersion", manifest.version);
 }
 
+/* ../common/Settings/store.ts */
+const Dispatcher = Webpack.getByKeys("dispatch", "subscribe", {
+    searchExports: true
+});
+const Flux = Webpack.getByKeys("Store");
+const Settings = new class Settings2 extends Flux.Store {
+    constructor() {
+        super(Dispatcher, {});
+    }
+    _settings = Data.load("settings") ?? {};
+    get(key, def = null) {
+        return this._settings[key] ?? def;
+    }
+    set(key, value) {
+        this._settings[key] = value;
+        Data.save("settings", this._settings);
+        this.emitChange();
+    }
+}();
+
+/* modules/shared.js */
+const LocalActivityStore = Webpack.getStore("LocalActivityStore");
+const SessionsStore = Webpack.getStore("SessionsStore");
+const UserStore = Webpack.getStore("UserStore");
+const PresenceStore = Webpack.getStore("PresenceStore");
+Webpack.getByKeys("useSyncExternalStore");
+Webpack.getByKeys("Store");
+const StatusTypes = Webpack.getModule((x) => x.DND && x.OFFLINE, {
+    searchExports: true
+});
+const Colors = Webpack.getByKeys("unsafe_rawColors")?.unsafe_rawColors;
+const Intl$1 = Webpack.getModule((x) => x.intl);
+const formatMessage = (key) => Intl$1.intl.formatToMarkdownString(Intl$1.t[key]);
+const Messages = {
+    "STATUS_DND": formatMessage("jaNpQH"),
+    "STATUS_OFFLINE": formatMessage("Vv0abJ"),
+    "STATUS_ONLINE": formatMessage("WbGtnH"),
+    "STATUS_STREAMING": formatMessage("XKYej5"),
+    "STATUS_IDLE": formatMessage("qWbtVU"),
+    "STATUS_MOBILE": formatMessage("5LMZtY")
+};
+const buildClassName = (...args) => {
+    return args.reduce((classNames, arg) => {
+        if (!arg) return classNames;
+        if (typeof arg === "string" || typeof arg === "number") {
+            classNames.push(arg);
+        } else if (Array.isArray(arg)) {
+            const nestedClassNames = buildClassName(...arg);
+            if (nestedClassNames) classNames.push(nestedClassNames);
+        } else if (typeof arg === "object") {
+            Object.keys(arg).forEach((key) => {
+                if (arg[key]) classNames.push(key);
+            });
+        }
+        return classNames;
+    }, []).join(" ");
+};
+
+/* modules/usePlatformStores.js */
+const isStreaming = () => LocalActivityStore.getActivities().some((e) => e.type === 1);
+
+function usePlatformStores(userId, type) {
+    const user = Hooks.useStateFromStores([UserStore], () => UserStore.getUser(userId));
+    const sessions = Hooks.useStateFromStores([SessionsStore], () => SessionsStore.getSessions());
+    const iconStates = Settings.get("icons", {});
+    const shownInArea = Settings.get("showIn" + type, true);
+    const ignoreBots = Settings.get("ignoreBots", true) && (user?.bot ?? false);
+    const shouldShow = shownInArea && !ignoreBots;
+    const clients = (() => {
+        if (user?.id === UserStore.getCurrentUser()?.id) {
+            if (sessions) {
+                const clientStatuses = Object.entries(sessions).reduce((acc, [, sessionData]) => {
+                    const client = sessionData.clientInfo.client;
+                    acc[client] = isStreaming() ? "streaming" : sessionData.status;
+                    return acc;
+                }, {});
+                return clientStatuses;
+            }
+            return {};
+        }
+        return PresenceStore.getState().clientStatuses[user?.id] ?? {};
+    })();
+    return {
+        iconStates,
+        shouldShow,
+        clients,
+        user
+    };
+}
+
+/* modules/utils.js */
+const findInReactTree = (tree, filter) => Utils.findInTree(tree, filter, {
+    walkable: ["props", "children", "type"]
+});
+const upperFirst = (string) => string.charAt(0).toUpperCase() + string.slice(1);
+
+function getStatusText(key, status) {
+    return (key === "vr" ? "VR" : upperFirst(key)) + ": " + Messages[`STATUS_${(status === "mobile" ? "mobile_online" : status).toUpperCase()}`];
+}
+
+function getStatusColor(status) {
+    switch (status) {
+        case StatusTypes.ONLINE:
+            return Colors.GREEN_360.css;
+        case StatusTypes.IDLE:
+            return Colors.YELLOW_300.css;
+        case StatusTypes.DND:
+            return Colors.RED_400.css;
+        case StatusTypes.STREAMING:
+            return Colors.TWITCH.css;
+        case StatusTypes.INVISIBLE:
+        case StatusTypes.UNKNOWN:
+        case StatusTypes.OFFLINE:
+        default:
+            return Colors.PRIMARY_400.css;
+    }
+}
+
 /* components/icons/desktop.jsx */
 function Desktop(props) {
     return React.createElement("svg", {
-        class: "PI-icon_desktop",
+        className: "PI-icon_desktop",
         width: "24",
         height: "24",
         viewBox: "0 -2.5 28 28",
@@ -175,7 +285,7 @@ function Desktop(props) {
 /* components/icons/embedded.jsx */
 function Embedded(props) {
     return React.createElement("svg", {
-        class: "PI-icon_embedded",
+        className: "PI-icon_embedded",
         width: "24",
         height: "24",
         viewBox: "0 -2.5 28 28",
@@ -189,7 +299,7 @@ function Embedded(props) {
 /* components/icons/mobile.jsx */
 function Mobile(props) {
     return React.createElement("svg", {
-        class: "PI-icon_mobile",
+        className: "PI-icon_mobile",
         width: "24",
         height: "24",
         transform: "scale(0.9)",
@@ -204,7 +314,7 @@ function Mobile(props) {
 /* components/icons/vr.jsx */
 function VR(props) {
     return React.createElement("svg", {
-        class: "PI-icon_vr",
+        className: "PI-icon_vr",
         width: "24",
         height: "24",
         viewBox: "0 -2.5 28 28",
@@ -214,8 +324,8 @@ function VR(props) {
         d: "M8.46 8.64a1 1 0 0 1 1 1c0 .44-.3.8-.72.92l-.11.07c-.08.06-.2.19-.2.41a.99.99 0 0 1-.98.86h-.06a1 1 0 0 1-.94-1.05l.02-.32c.05-1.06.92-1.9 1.99-1.9Z"
     }), React.createElement("path", {
         fill: "currentColor",
-        "fill-rule": "evenodd",
-        "clip-rule": "evenodd",
+        fillRule: "evenodd",
+        clipRule: "evenodd",
         d: "M15.55 5a5.5 5.5 0 0 1 5.15 3.67h.3a2 2 0 0 1 2 2v3.18a2 2 0 0 1-2 1.99h-.2A4.54 4.54 0 0 1 16.55 19a4.45 4.45 0 0 1-3.6-1.83 1.2 1.2 0 0 0-1.9 0 4.44 4.44 0 0 1-3.9 1.82 4.54 4.54 0 0 1-3.94-3.15H3a2 2 0 0 1-2-2v-3.18c0-1.1.9-1.99 2-1.99h.3A5.5 5.5 0 0 1 8.46 5h7.09Zm-7.1 2C6.6 7 5.06 8.5 4.97 10.41l-.02.66v3.18c0 1.43 1.05 2.66 2.34 2.74.85.06 1.63-.32 2.14-1.01a3.2 3.2 0 0 1 2.57-1.3c1 0 1.97.48 2.57 1.3.5.69 1.3 1.08 2.14 1.01 1.3-.08 2.34-1.31 2.34-2.74l-.02-3.84a3.54 3.54 0 0 0-3.49-3.43H8.45Z"
     }));
 }
@@ -223,7 +333,7 @@ function VR(props) {
 /* components/icons/web.jsx */
 function Web(props) {
     return React.createElement("svg", {
-        class: "PI-icon_web",
+        className: "PI-icon_web",
         width: "24",
         height: "24",
         viewBox: "0 -2.5 28 28",
@@ -294,127 +404,6 @@ var Styles$1 = {
     "PIIcon_mobile": "PI-icon_mobile",
     "badge_separator": "badge_separator"
 };
-
-/* modules/shared.js */
-const LocalActivityStore = Webpack.getStore("LocalActivityStore");
-const SessionsStore = Webpack.getStore("SessionsStore");
-const UserStore = Webpack.getStore("UserStore");
-const PresenceStore = Webpack.getStore("PresenceStore");
-const {
-    useSyncExternalStore: useStateFromStoresObject
-} = Webpack.getByKeys("useSyncExternalStore");
-const useStateFromStores = BdApi.Hooks.useStateFromStores;
-const Dispatcher = UserStore._dispatcher;
-const Flux = Webpack.getByKeys("Store");
-const StatusTypes = Webpack.getModule((x) => x.DND && x.OFFLINE, {
-    searchExports: true
-});
-const Colors = Webpack.getByKeys("unsafe_rawColors")?.unsafe_rawColors;
-const Intl$1 = Webpack.getModule((x) => x.intl);
-const formatMessage = (key) => Intl$1.intl.formatToMarkdownString(Intl$1.t[key]);
-const Messages = {
-    "STATUS_DND": formatMessage("jaNpQH"),
-    "STATUS_OFFLINE": formatMessage("Vv0abJ"),
-    "STATUS_ONLINE": formatMessage("WbGtnH"),
-    "STATUS_STREAMING": formatMessage("XKYej5"),
-    "STATUS_IDLE": formatMessage("qWbtVU"),
-    "STATUS_MOBILE": formatMessage("5LMZtY")
-};
-const buildClassName = (...args) => {
-    return args.reduce((classNames, arg) => {
-        if (!arg) return classNames;
-        if (typeof arg === "string" || typeof arg === "number") {
-            classNames.push(arg);
-        } else if (Array.isArray(arg)) {
-            const nestedClassNames = buildClassName(...arg);
-            if (nestedClassNames) classNames.push(nestedClassNames);
-        } else if (typeof arg === "object") {
-            Object.keys(arg).forEach((key) => {
-                if (arg[key]) classNames.push(key);
-            });
-        }
-        return classNames;
-    }, []).join(" ");
-};
-
-/* modules/settings.js */
-const Settings = new class Settings2 extends Flux.Store {
-    constructor() {
-        super(Dispatcher, {});
-    }
-    _settings = Data.load("settings") ?? {};
-    get(key, def) {
-        return this._settings[key] ?? def;
-    }
-    set(key, value) {
-        this._settings[key] = value;
-        Data.save("settings", this._settings);
-        this.emitChange();
-    }
-}();
-
-/* modules/usePlatformStores.js */
-const isStreaming = () => LocalActivityStore.getActivities().some((e) => e.type === 1);
-
-function usePlatformStores(userId, type) {
-    const user = useStateFromStores([UserStore], () => UserStore.getUser(userId));
-    const sessions = useStateFromStores([SessionsStore], () => SessionsStore.getSessions());
-    const iconStates = Settings.get("icons", {});
-    const shownInArea = Settings.get("showIn" + type, true);
-    const ignoreBots = Settings.get("ignoreBots", true) && (user?.bot ?? false);
-    const shouldShow = shownInArea && !ignoreBots;
-    const clients = (() => {
-        if (user?.id === UserStore.getCurrentUser()?.id) {
-            if (sessions) {
-                const clientStatuses = Object.entries(sessions).reduce((acc, [, sessionData]) => {
-                    const client = sessionData.clientInfo.client;
-                    acc[client] = isStreaming() ? "streaming" : sessionData.status;
-                    return acc;
-                }, {});
-                return clientStatuses;
-            }
-            return {};
-        }
-        return PresenceStore.getState().clientStatuses[user?.id] ?? {};
-    })();
-    return {
-        iconStates,
-        shouldShow,
-        clients,
-        user
-    };
-}
-
-/* modules/utils.js */
-const findInReactTree = (tree, filter) => Utils.findInTree(tree, filter, {
-    walkable: ["props", "children", "type"]
-});
-
-function upperFirst(string) {
-    return string.charAt(0).toUpperCase() + string.slice(1);
-}
-
-function getStatusText(key, status) {
-    return (key === "vr" ? "VR" : upperFirst(key)) + ": " + Messages[`STATUS_${(status === "mobile" ? "mobile_online" : status).toUpperCase()}`];
-}
-
-function getStatusColor(status) {
-    switch (status) {
-        case StatusTypes.ONLINE:
-            return Colors.GREEN_360;
-        case StatusTypes.IDLE:
-            return Colors.YELLOW_300;
-        case StatusTypes.DND:
-            return Colors.RED_400;
-        case StatusTypes.STREAMING:
-            return Colors.TWITCH;
-        case StatusTypes.INVISIBLE:
-        case StatusTypes.UNKNOWN:
-        case StatusTypes.OFFLINE:
-        default:
-            return Colors.PRIMARY_400;
-    }
-}
 
 /* components/indicators.jsx */
 function StatusIndicators({
@@ -574,8 +563,8 @@ Styles$2.sheets.push("/* components/settings.scss */", `.PIsettingsSmartDisable 
 }
 .PIsettingsSmartDisable .body {
   display: grid;
-  grid-template-columns: 160px 160px;
-  grid-template-rows: auto auto;
+  grid-template-columns: 160px 160px 160px;
+  grid-template-rows: auto auto auto;
   column-gap: 15px;
   row-gap: 15px;
 }
@@ -611,7 +600,7 @@ const {
 } = Components;
 
 function SwitchItem(props) {
-    const value = useStateFromStores([Settings], () => Settings.get(props.id, props.value));
+    const value = Hooks.useStateFromStores([Settings], () => Settings.get(props.id, props.value));
     return React.createElement(
         SettingItem, {
             ...props,
@@ -699,11 +688,11 @@ class PlatformIndicators {
         this.patchBadges();
         this.patchFriendList();
     }
-    patchDMList() {
+    async patchDMList() {
         const UserContext = React.createContext(null);
-        const ChannelWrapper = Webpack.getBySource("activities", "isMultiUserDM", "isMobile");
-        const NameWrapper = Webpack.getBySource("AvatarWithText").A;
-        const ChannelClasses = Webpack.getByKeys("channel", "decorator");
+        const ChannelWrapper = await Webpack.waitForModule(Webpack.Filters.bySource('location:"PrivateChannel",', "isMobile"));
+        const NameWrapper = (await Webpack.waitForModule(Webpack.Filters.bySource("AvatarWithText"))).A;
+        const ChannelClasses = await Webpack.waitForModule(Webpack.Filters.byKeys("channel", "decorator"));
         Patcher.after(ChannelWrapper, "Ay", (_, __, res) => {
             if (!Settings.get("showInDmsList", true)) return;
             Patcher.after(res, "type", (_2, [props], res2) => {
@@ -740,8 +729,10 @@ class PlatformIndicators {
             );
         });
     }
-    patchMemberList() {
-        const [MemberItem, key] = Webpack.getWithKey(Webpack.Filters.byStrings("nameplate:", ".MEMBER_LIST"));
+    async patchMemberList() {
+        const [MemberItem, key] = Webpack.getWithKey(() => true, {
+            target: await Webpack.waitForModule(Webpack.Filters.bySource("nameplate:", ".MEMBER_LIST", "listitem"))
+        });
         Patcher.after(MemberItem, key, (_, [props], ret) => {
             const user = props.avatar.props.user;
             if (ret?.props?.className?.includes("placeholder")) return;
@@ -761,8 +752,10 @@ class PlatformIndicators {
             }
         });
     }
-    patchChat() {
-        const [ChatUsername, key] = Webpack.getWithKey(Webpack.Filters.byStrings(".guildMemberAvatar&&null!="));
+    async patchChat() {
+        const [ChatUsername, key] = Webpack.getWithKey(() => true, {
+            target: await Webpack.waitForModule(Webpack.Filters.bySource(".guildMemberAvatar&&null!="))
+        });
         Patcher.before(ChatUsername, key, (_, props) => {
             const mainProps = props[0];
             if (!Settings.get("showInChat", true)) return;
@@ -780,8 +773,10 @@ class PlatformIndicators {
             );
         });
     }
-    patchBadges() {
-        const [BadgeList, Key_BL] = Webpack.getWithKey(Webpack.Filters.byStrings("badges", "badgeClassName", ".BADGE"));
+    async patchBadges() {
+        const [BadgeList, Key_BL] = Webpack.getWithKey(() => true, {
+            target: await Webpack.waitForModule(Webpack.Filters.bySource("badges", "badgeClassName", ".BADGE"))
+        });
         Patcher.after(BadgeList, Key_BL, (_, [{
             displayProfile
         }], res) => {
@@ -799,37 +794,28 @@ class PlatformIndicators {
             );
         });
     }
-    patchFriendList() {
-        const UserInfo = Webpack.getBySource("user", "subText", "showAccountIdentifier").A;
-        const FriendListClasses = Webpack.getByKeys("userInfo", "hovered");
+    async patchFriendList() {
+        const [UserInfo, key] = Webpack.getWithKey(() => true, {
+            target: await Webpack.waitForModule(Webpack.Filters.bySource("user", "showAccountIdentifier", "overrideDiscriminator"))
+        });
+        const FriendListClasses = await Webpack.waitForModule(Webpack.Filters.byKeys("userInfo", "hovered"));
         if (!Settings.get("showInFriendsList", true)) return;
         DOM.addStyle("PlatformIndicators", `
             .${FriendListClasses.discriminator} { display: none; }
             .${FriendListClasses.hovered} .${FriendListClasses.discriminator} { display: unset; }
         `);
-        const unpatch = Patcher.after(UserInfo.prototype, "render", (_, __, res) => {
-            unpatch();
-            Patcher.after(res.type.prototype, "render", (_2, __2, res2) => {
-                const unpatch2 = Patcher.after(res2, "type", (_3, __3, res3) => {
-                    unpatch2();
-                    const child = Utils.findInTree(res3, (e) => e?.className?.includes("listItemContents"), {
-                        walkable: ["children", "props"]
-                    });
-                    if (!child) return;
-                    const userId = findInReactTree(res3, (e) => e?.user)?.user?.id;
-                    if (!userId) return;
-                    const unpatch3 = Patcher.after(child.children[0], "type", (_4, __4, res4) => {
-                        unpatch3();
-                        res4.props.children.push(
-                            React.createElement(
-                                StatusIndicators, {
-                                    userId,
-                                    type: "FriendList"
-                                }
-                            )
-                        );
-                    });
-                });
+        Patcher.after(UserInfo, key, (_, [{
+            user
+        }], res) => {
+            Patcher.after(res, "type", (_2, __, res2) => {
+                res2.props.children.push(
+                    React.createElement(
+                        StatusIndicators, {
+                            userId: user.id,
+                            type: "FriendList"
+                        }
+                    )
+                );
             });
         });
     }
