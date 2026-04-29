@@ -1,8 +1,7 @@
-import { Components } from "@api";
+import { Components, Hooks } from "@api";
+import { Settings } from "@common/Settings";
 import React from "react";
 
-import Settings from "../modules/settings";
-import { useStateFromStores } from "../modules/shared";
 import { getStatusColor } from "../modules/utils";
 import { Checkbox } from "./icons/checkbox";
 import * as Icons from "./icons/Icons";
@@ -12,7 +11,7 @@ import Styles from "./settings.scss";
 const { SettingItem, SwitchInput } = Components;
 
 function SwitchItem(props) {
-    const value = useStateFromStores([Settings], () => Settings.get(props.id, props.value));
+    const value = Hooks.useStateFromStores([Settings], () => Settings.get(props.id, props.value));
     return (
         <SettingItem
             {...props}

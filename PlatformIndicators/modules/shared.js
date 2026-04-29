@@ -1,4 +1,4 @@
-import { Hooks, Webpack } from "@api";
+import { Webpack } from "@api";
 
 // Stores
 export const LocalActivityStore = Webpack.getStore("LocalActivityStore");
@@ -8,7 +8,6 @@ export const PresenceStore = Webpack.getStore("PresenceStore");
 
 // Other modules
 export const { useSyncExternalStore: useStateFromStoresObject } = Webpack.getByKeys("useSyncExternalStore");
-export const useStateFromStores = Hooks.useStateFromStores;
 export const Dispatcher = UserStore._dispatcher;
 
 export const Flux = Webpack.getByKeys("Store");
@@ -17,7 +16,6 @@ export const Colors = Webpack.getByKeys("unsafe_rawColors")?.unsafe_rawColors;
 export const Intl = Webpack.getModule(x => x.intl);
 
 const formatMessage = key => Intl.intl.formatToMarkdownString(Intl.t[key]);
-// this takes the current locale and never changes. unless someone is messing with locale or firs time discord user, updating this doesnt really matter.
 
 export const Messages = {
     "STATUS_DND": formatMessage("jaNpQH"),
@@ -28,7 +26,7 @@ export const Messages = {
     "STATUS_MOBILE": formatMessage("5LMZtY")
 };
 
-export const buildClassName = (...args) => { // yeah, yk... I couldnt find a working string for this so I just remade it ;-;
+export const buildClassName = (...args) => {
     return args.reduce((classNames, arg) => {
         if (!arg) return classNames;
 

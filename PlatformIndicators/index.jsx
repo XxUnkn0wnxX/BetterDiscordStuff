@@ -1,12 +1,12 @@
 import { DOM, Patcher, ReactUtils, Utils, Webpack } from "@api";
+import showChangelog from "@common/Changelog";
+import { Settings } from "@common/Settings";
 import manifest from "@manifest";
 import Styles from "@styles";
 import React from "react";
 
-import showChangelog from "../common/Changelog";
 import StatusIndicators from "./components/indicators";
 import SettingsPanel from "./components/settings";
-import Settings from "./modules/settings";
 import { findInReactTree } from "./modules/utils";
 
 export default class PlatformIndicators {
@@ -28,33 +28,14 @@ export default class PlatformIndicators {
         this.patchFriendList();
     }
 
-    queueDMListPatchRetry() {
-        if (this.dmListPatched || this.dmListRetryTimer) return;
-
-        this.dmListRetryTimer = setTimeout(() => {
-            this.dmListRetryTimer = null;
-            this.patchDMList();
-        }, 1500);
-    }
-
-    patchDMList() {
+    async patchDMList() {
         const UserContext = React.createContext(null);
-        const ChannelWrapper = Webpack.getBySource("activities", "isMultiUserDM", "isMobile");
-        const NameWrapper = Webpack.getBySource("AvatarWithText")?.A;
-        const ChannelClasses = Webpack.getByKeys("channel", "decorator");
-        const channelWrapperKey = typeof ChannelWrapper?.Ay === "function" ? "Ay" : null;
+        const ChannelWrapper = await Webpack.waitForModule(Webpack.Filters.bySource("location:\"PrivateChannel\",", "isMobile"));
+        const NameWrapper = (await Webpack.waitForModule(Webpack.Filters.bySource("AvatarWithText"))).A;
+        const ChannelClasses = await Webpack.waitForModule(Webpack.Filters.byKeys("channel", "decorator"));
 
-        if (!channelWrapperKey || typeof NameWrapper?.render !== "function") {
-            this.queueDMListPatchRetry();
-            return;
-        }
-
-        this.dmListPatched = true;
-
-        Patcher.after(ChannelWrapper, channelWrapperKey, (_, __, res) => {
+        Patcher.after(ChannelWrapper, "Ay", (_, __, res) => {
             if (!Settings.get("showInDmsList", true)) return;
-            if (!res || typeof res.type !== "function") return;
-
             Patcher.after(res, "type", (_, [props], res) => {
                 if (!props.user) return; // Its a group DM
                 if (Settings.get("ignoreBots", true) && props.user.bot) return;
@@ -92,8 +73,8 @@ export default class PlatformIndicators {
         });
     }
 
-    patchMemberList() {
-        const [MemberItem, key] = Webpack.getWithKey(Webpack.Filters.byStrings("nameplate:", ".MEMBER_LIST"));
+    async patchMemberList() {
+        const [MemberItem, key] = Webpack.getWithKey(() => true, { target: await Webpack.waitForModule(Webpack.Filters.bySource("nameplate:", ".MEMBER_LIST", "listitem")) });
 
         Patcher.after(MemberItem, key, (_, [props], ret) => {
             const user = props.avatar.props.user;
@@ -113,8 +94,8 @@ export default class PlatformIndicators {
         });
     }
 
-    patchChat() {
-        const [ChatUsername, key] = Webpack.getWithKey(Webpack.Filters.byStrings(".guildMemberAvatar&&null!="));
+    async patchChat() {
+        const [ChatUsername, key] = Webpack.getWithKey(() => true, { target: await Webpack.waitForModule(Webpack.Filters.bySource(".guildMemberAvatar&&null!=")) });
 
         Patcher.before(ChatUsername, key, (_, props) => {
             const mainProps = props[0];
@@ -132,8 +113,8 @@ export default class PlatformIndicators {
         });
     }
 
-    patchBadges() {
-        const [BadgeList, Key_BL] = Webpack.getWithKey(Webpack.Filters.byStrings("badges", "badgeClassName", ".BADGE"));
+    async patchBadges() {
+        const [BadgeList, Key_BL] = Webpack.getWithKey(() => true, { target: await Webpack.waitForModule(Webpack.Filters.bySource("badges", "badgeClassName", ".BADGE")) });
 
         Patcher.after(BadgeList, Key_BL, (_, [{ displayProfile }], res) => {
             if (!Settings.get("showInBadges", true)) return;
@@ -149,57 +130,25 @@ export default class PlatformIndicators {
         });
     }
 
-    queueFriendListPatchRetry() {
-        if (this.friendListPatched || this.friendListRetryTimer) return;
+    async patchFriendList() {
+        const [UserInfo, key] = Webpack.getWithKey(() => true, { target: await Webpack.waitForModule(Webpack.Filters.bySource("user", "showAccountIdentifier", "overrideDiscriminator")) });
+        const FriendListClasses = await Webpack.waitForModule(Webpack.Filters.byKeys("userInfo", "hovered"));
 
-        this.friendListRetryTimer = setTimeout(() => {
-            this.friendListRetryTimer = null;
-            this.patchFriendList();
-        }, 1500);
-    }
-
-    patchFriendList() {
         if (!Settings.get("showInFriendsList", true)) return;
-        const UserInfo = Webpack.getBySource("user", "subText", "showAccountIdentifier")?.A;
-        const FriendListClasses = Webpack.getByKeys("userInfo", "hovered");
-
-        if (typeof UserInfo !== "function" || !FriendListClasses?.discriminator || !FriendListClasses?.hovered) {
-            this.queueFriendListPatchRetry();
-            return;
-        }
-
-        this.friendListPatched = true;
 
         DOM.addStyle("PlatformIndicators", `
             .${FriendListClasses.discriminator} { display: none; }
             .${FriendListClasses.hovered} .${FriendListClasses.discriminator} { display: unset; }
         `);
 
-        const unpatch = Patcher.after(UserInfo.prototype, "render", (_, __, res) => {
-            unpatch();
-            if (!res?.type?.prototype) return;
-            Patcher.after(res.type.prototype, "render", (_, __, res) => {
-                if (!res || typeof res.type !== "function") return;
-                const unpatch2 = Patcher.after(res, "type", (_, __, res) => {
-                    unpatch2();
-                    const child = Utils.findInTree(res, e => e?.className?.includes("listItemContents"), { walkable: ["children", "props"] });
-                    if (!child) return;
-
-                    const userId = findInReactTree(res, e => e?.user, { walkable: ["props", "children"] })?.user?.id;
-                    if (!userId) return;
-
-                    if (!child.children?.[0] || typeof child.children[0].type !== "function") return;
-                    const unpatch3 = Patcher.after(child.children[0], "type", (_, __, res) => {
-                        unpatch3();
-                        if (!res?.props?.children) return;
-                        res.props.children.push(
-                            <StatusIndicators
-                                userId={userId}
-                                type="FriendList"
-                            />
-                        );
-                    });
-                });
+        Patcher.after(UserInfo, key, (_, [{ user }], res) => {
+            Patcher.after(res, "type", (_, __, res) => {
+                res.props.children.push(
+                    <StatusIndicators
+                        userId={user.id}
+                        type="FriendList"
+                    />
+                );
             });
         });
     }

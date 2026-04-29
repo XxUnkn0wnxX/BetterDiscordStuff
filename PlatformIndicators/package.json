@@ -1,4 +1,5 @@
 {
+  "$schema": "../common/Schemas/manifest.schema.json",
   "name": "APlatformIndicators",
   "version": "1.6.2",
   "author": "Strencher",
@@ -11,10 +12,10 @@
       "title": "Fixed",
       "type": "fixed",
       "items": [
-        "Prevent startup errors when the DM list or friend list modules load later during Discord launch"
+        "Fixed for the latest Discord update"
       ]
     }
   ],
-  "changelogDate": "2026-04-26"
+  "changelogDate": "2026-04-27"
 }
 
