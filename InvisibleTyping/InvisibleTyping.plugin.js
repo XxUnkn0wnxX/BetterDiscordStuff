@@ -544,7 +544,7 @@ class InvisibleTyping {
         const ChatButtonsGroup = Webpack.getBySource("isSubmitButtonEnabled", ".A.getActiveOption(")?.A;
         Patcher.after(ChatButtonsGroup, "type", (_, methodArgs, res) => {
             const [args] = methodArgs;
-            if (!args.disabled && ["normal", "sidebar"].includes(args.type.analyticsName) && Array.isArray(res.props?.children)) {
+            if (!args.disabled && ["normal", "sidebar"].includes(args.type.analyticsName) && Array.isArray(res?.props?.children)) {
                 res.props.children.unshift(React.createElement(InvisibleTypingButton, {
                     channel: args.channel,
                     isEmpty: !args.textValue
