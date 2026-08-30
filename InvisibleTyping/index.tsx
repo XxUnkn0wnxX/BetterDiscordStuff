@@ -60,7 +60,7 @@ export default class InvisibleTyping {
             if (
                 !args.disabled &&
                 ["normal", "sidebar"].includes(args.type.analyticsName) &&
-                Array.isArray(res.props?.children)
+                Array.isArray(res?.props?.children)
             ) {
                 res.props.children.unshift(<InvisibleTypingButton channel={args.channel} isEmpty={!args.textValue} />);
             }
